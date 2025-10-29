@@ -1,5 +1,6 @@
 
 from abc import ABC, abstractmethod  # Pour gérer les classes abstraites en Python
+import json
 
 
 # ===============================================================
