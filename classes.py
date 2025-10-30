@@ -1,6 +1,7 @@
 
 from abc import ABC, abstractmethod  # Pour gérer les classes abstraites en Python
 import json
+from typing import List, Dict, Any, Optional
 
 
 # ===============================================================
@@ -11,12 +12,13 @@ import json
 # - Méthodes abstraites : calculer_tarif_location() et afficher_details()
 # ===============================================================
 class Vehicule(ABC):
-    def __init__(self, marque, modele, annee, prix_journalier):
+    def __init__(self, marque, modele, annee, prix_journalier, immatriculation: Optional[str] = None):
         self.__marque = marque
         self.__modele = modele
         self.__annee = annee
         self.__prix_journalier = prix_journalier
         self.__disponible = True  # Par défaut, un véhicule est disponible
+        self.__immatriculation = immatriculation
 
     # --- Getters et Setters (Encapsulation) ---
     def get_marque(self):
@@ -47,7 +49,17 @@ class Vehicule(ABC):
         return self.__disponible
 
     def set_disponibilite(self, etat):
-        self.__disponible = etat
+        if etat in [True, False]:
+            self.__disponible = etat
+        else:
+            raise ValueError("La disponibilité doit être True ou False.")
+    
+    def get_immatriculation(self):
+        return self.__immatriculation
+
+    def set_immatriculation(self, immat: str):
+        self.__immatriculation = immat
+        
 
     # --- Méthodes abstraites à implémenter dans les sous-classes ---
     @abstractmethod
@@ -57,6 +69,28 @@ class Vehicule(ABC):
     @abstractmethod
     def afficher_details(self):
         pass
+
+    # Sérialisation de base pour tous les véhicules
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'type': self.__class__.__name__,
+            'marque': self.__marque,
+            'modele': self.__modele,
+            'annee': self.__annee,
+            'prix_journalier': self.__prix_journalier,
+            'disponible': self.__disponible,
+            'immatriculation': self.__immatriculation,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        typ = data.get('type', 'Vehicule')
+        if typ == 'Voiture':
+            return Voiture.from_dict(data)
+        if typ == 'Moto':
+            return Moto.from_dict(data)
+        # fallback to a generic Vehicule (not instantiable as abstract) -> create a simple Voiture
+        return Voiture(data.get('marque'), data.get('modele'), data.get('annee'), data.get('prix_journalier'), nombre_portes=4)
 
 
     # ===============================================================
@@ -88,7 +122,19 @@ class Voiture(Vehicule):
     # Redéfinition de l’affichage des détails
     def afficher_details(self):
         print(f"Voiture : {self.get_marque()} {self.get_modele()} ({self.get_annee()}) - "
-              f"{self.get_nombre_portes()} portes - {self.get_prix_journalier()}€/jour")
+              f"{self.get_nombre_portes()} portes - {self.get_prix_journalier()}fcfa/jour")
+
+    def to_dict(self) -> Dict[str, Any]:
+        base = super().to_dict()
+        base.update({'nombre_portes': self.__nombre_portes})
+        return base
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        v = cls(data.get('marque'), data.get('modele'), data.get('annee'), data.get('prix_journalier'), data.get('nombre_portes', 4))
+        v.set_disponibilite(data.get('disponible', True))
+        v.set_immatriculation(data.get('immatriculation'))
+        return v
 
 
 # ===============================================================
@@ -99,15 +145,16 @@ class Voiture(Vehicule):
 # - Redéfinit les méthodes abstraites.
 # ===============================================================
 class Moto(Vehicule):
-    def __init__(self, marque, modele, annee, prix_journalier, cylindree):
+    def __init__(self, marque, modele, annee, prix_journalier, cylindree: int = 500):
         super().__init__(marque, modele, annee, prix_journalier)
         self.__cylindree = cylindree
+
 
     def get_cylindree(self):
         return self.__cylindree
 
-    def set_cylindree(self, cylindree):
-        self.__cylindree = cylindree
+    def set_cylindree(self, c):
+        self.__cylindree = c
 
     def calculer_tarif_location(self, nb_jours):
         total = self.get_prix_journalier() * nb_jours
@@ -118,7 +165,19 @@ class Moto(Vehicule):
 
     def afficher_details(self):
         print(f"Moto : {self.get_marque()} {self.get_modele()} ({self.get_annee()}) - "
-              f"{self.get_cylindree()}cc - {self.get_prix_journalier()}€/jour")
+              f"{self.get_cylindree()}cc - {self.get_prix_journalier()}fcfa/jour")
+
+    def to_dict(self) -> Dict[str, Any]:
+        base = super().to_dict()
+        base.update({'cylindree': self.__cylindree})
+        return base
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        m = cls(data.get('marque'), data.get('modele'), data.get('annee'), data.get('prix_journalier'), data.get('cylindree', 500))
+        m.set_disponibilite(data.get('disponible', True))
+        m.set_immatriculation(data.get('immatriculation'))
+        return m
 
 
 # ===============================================================
@@ -153,7 +212,18 @@ class Client:
         self.__telephone = telephone
 
     def afficher_details(self):
-        print(f"Client : {self.__prenom} {self.__nom} - Tél: {self.__telephone}")
+        return (f"{self.__prenom} {self.__nom} - Tél: {self.__telephone}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'nom': self.__nom,
+            'prenom': self.__prenom,
+            'telephone': self.__telephone
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(data.get('nom', ''), data.get('prenom', ''), data.get('telephone', ''))
 
 
 # ===============================================================
@@ -170,6 +240,7 @@ class ContratLocation:
         self.__nb_jours = nb_jours
         self.__montant_total = vehicule.calculer_tarif_location(nb_jours)
         vehicule.set_disponibilite(False)  # Le véhicule n’est plus disponible
+        self.__mode_paiement = None  # Optionnel: mode de paiement utilisé
 
     def get_client(self):
         return self.__client
@@ -188,8 +259,39 @@ class ContratLocation:
         self.__client.afficher_details()
         self.__vehicule.afficher_details()
         print(f"Durée : {self.__nb_jours} jours")
-        print(f"Montant total : {self.__montant_total} €")
+        print(f"Montant total : {self.__montant_total} fcfa")
+        if self.__mode_paiement:
+            print(f"Mode de paiement : {self.__mode_paiement}")
         print("===============================")
+
+    def set_mode_paiement(self, mode):
+        self.__mode_paiement = mode
+
+    def get_mode_paiement(self):
+        return self.__mode_paiement
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'client': self.__client.to_dict(),
+            'vehicule': self.__vehicule.to_dict(),
+            'nb_jours': self.__nb_jours,
+            'montant_total': self.__montant_total,
+            'mode_paiement': self.__mode_paiement.to_dict() if self.__mode_paiement else None
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        client = Client.from_dict(data.get('client', {}))
+        vehicule = Vehicule.from_dict(data.get('vehicule', {}))
+        nb_jours = data.get('nb_jours', 1)
+        contrat = cls(client, vehicule, nb_jours)
+        # montant_total recalculé dans __init__ ; si présent on peut l'assigner
+        contrat.__montant_total = data.get('montant_total', contrat.get_montant_total())
+        # mode de paiement
+        mp = data.get('mode_paiement')
+        if mp:
+            contrat.set_mode_paiement(ModePaiement.from_dict(mp))
+        return contrat
 
 
 
@@ -203,22 +305,52 @@ class GestionnaireDonnees:
     @staticmethod
     def sauvegarder(vehicules, clients, contrats):
         data = {
-            "vehicules": [v.get_immatriculation() for v in vehicules],
-            "clients": [c.get_nom_complet() for c in clients],
-            "contrats": [vars(c) for c in contrats]
+            "vehicules": [v.to_dict() for v in vehicules],
+            "clients": [c.to_dict() for c in clients],
+            "contrats": [c.to_dict() for c in contrats]
         }
-        with open("donnees.json", "w") as f:
-            json.dump(data, f, indent=4)
+        with open("donnees.json", "w", encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
         print("✅ Données sauvegardées dans donnees.json")
 
     @staticmethod
     def charger():
         try:
-            with open("donnees.json", "r") as f:
+            with open("donnees.json", "r", encoding='utf-8') as f:
                 data = json.load(f)
                 print("✅ Données chargées avec succès")
-                return data
+                # reconstruire objets
+                vehs = [Vehicule.from_dict(v) for v in data.get('vehicules', [])]
+                clts = [Client.from_dict(c) for c in data.get('clients', [])]
+                contrats = [ContratLocation.from_dict(c) for c in data.get('contrats', [])]
+                return {"vehicules": vehs, "clients": clts, "contrats": contrats}
         except FileNotFoundError:
             print("⚠️ Aucune donnée trouvée. Nouveau départ.")
             return {"vehicules": [], "clients": [], "contrats": []}
+
+
+# --------------------------------------------------
+# Classe pour les modes de paiement
+# --------------------------------------------------
+class ModePaiement:
+    """Représente un mode de paiement simple.
+
+    Attributs : type ('carte' ou 'virement') et details (dict avec info pertinentes).
+    """
+    def __init__(self, type_mode: str, details: Optional[Dict[str, Any]] = None):
+        self.type_mode = type_mode
+        self.details = details or {}
+
+    def __str__(self):
+        return f"{self.type_mode} - {self.details}"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {'type_mode': self.type_mode, 'details': self.details}
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(data.get('type_mode', 'unknown'), data.get('details', {}))
+
+# Alias francophone pour compatibilité si utilisé ailleurs
+ModePaiement = ModePaiement
 
